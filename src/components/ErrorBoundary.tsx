@@ -61,21 +61,30 @@ export class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (!this.state.error) return this.props.children
 
+    // A failed chunk fetch is a loading problem, not a data problem. Telling
+    // someone their saved deals are corrupt would send them to wipe data that
+    // was never at fault.
+    const message = this.state.error.message
+    const isLoadFailure = /dynamically imported module|Importing a module script failed|Failed to fetch|chunk/i.test(message)
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
         <div className="card w-full max-w-lg p-6">
-          <h1 className="text-lg font-semibold tracking-tight">Something went wrong</h1>
+          <h1 className="text-lg font-semibold tracking-tight">
+            {isLoadFailure ? 'Part of the app failed to load' : 'Something went wrong'}
+          </h1>
           <p className="mt-2 text-sm leading-relaxed text-muted">
-            The app could not render with the data currently saved in this browser. This is almost
-            always a saved deal written by an older version.
+            {isLoadFailure
+              ? 'A piece of the application could not be downloaded — usually a dropped connection, or a cached copy left over from a previous version. Your saved deals are not the problem and reloading normally fixes it.'
+              : 'The app could not render with the data currently saved in this browser. This is most often a deal saved by an older version.'}
           </p>
 
-          <pre className="mono mt-4 max-h-32 overflow-auto rounded-md border border-line bg-raised p-3 text-2xs text-muted">
-            {this.state.error.message}
+          <pre className="mono mt-4 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-md border border-line bg-raised p-3 text-2xs text-muted">
+            {message}
           </pre>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <button className="btn" onClick={() => window.location.reload()}>
+            <button className={isLoadFailure ? 'btn-primary' : 'btn'} onClick={() => window.location.reload()}>
               Reload the page
             </button>
             <button className="btn" onClick={this.download}>
@@ -87,6 +96,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           </div>
 
           <p className="mt-4 text-2xs leading-relaxed text-subtle">
+            {isLoadFailure ? 'Try reloading first — clearing is unlikely to help here. ' : ''}
             Clearing removes every saved deal, the simulator setup and your investor profile from
             this browser. Nothing is stored anywhere else, so this cannot be undone — take the backup
             first if any of it matters.
