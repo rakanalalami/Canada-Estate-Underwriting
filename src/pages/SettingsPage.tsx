@@ -193,7 +193,11 @@ export default function SettingsPage() {
           <button
             className="btn-danger btn-xs"
             onClick={() => {
-              if (confirm('Delete every deal, the simulator setup and your investor profile? This cannot be undone.')) {
+              if (
+                confirm(
+                  'Delete every deal, the simulator setup and your investor profile?\n\nThis cannot be undone. Export anything you want to keep first.',
+                )
+              ) {
                 resetAll()
                 location.hash = '#/dashboard'
               }

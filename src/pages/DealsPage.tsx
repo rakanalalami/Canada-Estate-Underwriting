@@ -33,6 +33,7 @@ export default function DealsPage() {
   const toggleInPortfolio = useStore((s) => s.toggleInPortfolio)
   const compareIds = useStore((s) => s.compareIds)
   const toggleCompare = useStore((s) => s.toggleCompare)
+  const resetAll = useStore((s) => s.resetAll)
 
   const [showArchived, setShowArchived] = useState(false)
   const [statusFilter, setStatusFilter] = useState<string>('ALL')
@@ -104,7 +105,24 @@ export default function DealsPage() {
         subtitle="Filter the deals you have underwritten against a strategy."
         actions={
           <div className="flex gap-2">
-            <button className="btn btn-xs" onClick={clearFilters}>Clear</button>
+            {deals.length > 0 && (
+              <button
+                className="btn-danger btn-xs"
+                onClick={() => {
+                  if (
+                    confirm(
+                      `Delete all ${deals.length} saved ${deals.length === 1 ? 'deal' : 'deals'}, the simulator setup and your investor profile?\n\nThis cannot be undone. Export anything you want to keep first.`,
+                    )
+                  ) {
+                    resetAll()
+                    goTo('deals')
+                  }
+                }}
+              >
+                Delete all data
+              </button>
+            )}
+            <button className="btn btn-xs" onClick={clearFilters}>Clear filters</button>
             <button className="btn btn-xs" onClick={() => { addSample(); goTo('dashboard') }}>Load example</button>
             <button className="btn-primary btn-xs" onClick={() => { addDeal(); goTo(NEW_DEAL_ROUTE) }}>New deal</button>
           </div>

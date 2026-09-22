@@ -31,7 +31,6 @@ export interface SimulatorState {
 }
 
 interface StoreState {
-  version: number
   theme: ThemeMode
   deals: Deal[]
   activeDealId: string | null
@@ -177,12 +176,56 @@ function defaultSimulatorState(): SimulatorState {
   }
 }
 
+/**
+ * Bump this whenever stored state should be discarded rather than reused —
+ * see the `migrate` note on the persist config below.
+ */
+const PERSIST_VERSION = 2
+
 const touched = (d: Deal): Deal => ({ ...d, updatedAt: new Date().toISOString() })
+
+/**
+ * Fill any block a stored deal is missing from the current defaults.
+ *
+ * Stored state is only as trustworthy as the version of the app that wrote it.
+ * A deal saved by an older build — or edited by hand, or half-written when a
+ * tab was closed — can be missing whole sections, and reading through to
+ * `deal.financing.structure` on one of those takes the entire app down to a
+ * blank page. Reconciling on hydration keeps a partial record usable instead.
+ */
+function reconcileDeal(stored: Partial<Deal> | null | undefined): Deal | null {
+  if (!stored || typeof stored !== 'object' || !stored.id) return null
+  const base = createDeal()
+  return {
+    ...base,
+    ...stored,
+    id: stored.id,
+    info: { ...base.info, ...(stored.info ?? {}) },
+    legal: { ...base.legal, ...(stored.legal ?? {}) },
+    ratings: { ...base.ratings, ...(stored.ratings ?? {}) },
+    financing: { ...base.financing, ...(stored.financing ?? {}) },
+    refinance: { ...base.refinance, ...(stored.refinance ?? {}) },
+    projection: { ...base.projection, ...(stored.projection ?? {}) },
+    purchaseCosts: { ...base.purchaseCosts, ...(stored.purchaseCosts ?? {}) },
+    scenarios: { ...base.scenarios, ...(stored.scenarios ?? {}) },
+    expenses: {
+      ...base.expenses,
+      ...(stored.expenses ?? {}),
+      deductions: { ...base.expenses.deductions, ...(stored.expenses?.deductions ?? {}) },
+      lines: stored.expenses?.lines?.length ? stored.expenses.lines : base.expenses.lines,
+    },
+    components: stored.components?.length ? stored.components : base.components,
+    units: Array.isArray(stored.units) ? stored.units : [],
+    rentComps: Array.isArray(stored.rentComps) ? stored.rentComps : [],
+    saleComps: Array.isArray(stored.saleComps) ? stored.saleComps : [],
+    dealBreakers: stored.dealBreakers?.length ? stored.dealBreakers : base.dealBreakers,
+    sources: Array.isArray(stored.sources) ? stored.sources : [],
+  }
+}
 
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => ({
-      version: 1,
       theme:
         typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
           ? 'dark'
@@ -443,8 +486,55 @@ export const useStore = create<StoreState>()(
     {
       name: 'ottawa-underwriting-v1',
       storage: createJSONStorage(() => localStorage),
+      version: PERSIST_VERSION,
+      /**
+       * Anything saved before PERSIST_VERSION 2 is discarded rather than
+       * carried forward.
+       *
+       * Deals created before the appraisal fix stored a seeded C$650,000
+       * refinance appraisal regardless of price, which produced a phantom
+       * mortgage and phantom refinance proceeds. Repairing that in place would
+       * leave other pre-fix assumptions silently in the data, so the stored
+       * state is reset instead. Only the colour theme survives, because it is a
+       * display preference rather than underwriting data.
+       */
+      migrate: (persisted, fromVersion) => {
+        if (fromVersion >= PERSIST_VERSION) return persisted as Partial<StoreState>
+        const theme = (persisted as Partial<StoreState> | undefined)?.theme
+        return {
+          ...(theme ? { theme } : {}),
+          deals: [],
+          activeDealId: null,
+          profile: defaultInvestorProfile(),
+          simulator: defaultSimulatorState(),
+          compareIds: [],
+        } satisfies Partial<StoreState>
+      },
+      /**
+       * Reconcile each stored deal against the current shape before it reaches
+       * the UI, so a partial record degrades to usable defaults rather than
+       * crashing the render.
+       */
+      merge: (persisted, current) => {
+        const incoming = (persisted ?? {}) as Partial<StoreState>
+        const deals = Array.isArray(incoming.deals)
+          ? incoming.deals.map(reconcileDeal).filter((d): d is Deal => d !== null)
+          : current.deals
+        const activeDealId =
+          incoming.activeDealId && deals.some((d) => d.id === incoming.activeDealId)
+            ? incoming.activeDealId
+            : (deals[0]?.id ?? null)
+        return {
+          ...current,
+          ...incoming,
+          deals,
+          activeDealId,
+          profile: { ...current.profile, ...(incoming.profile ?? {}) },
+          simulator: { ...current.simulator, ...(incoming.simulator ?? {}) },
+          compareIds: (incoming.compareIds ?? []).filter((id) => deals.some((d) => d.id === id)),
+        }
+      },
       partialize: (s) => ({
-        version: s.version,
         theme: s.theme,
         deals: s.deals,
         activeDealId: s.activeDealId,
