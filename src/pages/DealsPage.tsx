@@ -17,6 +17,7 @@ import {
   cx,
 } from '@/components/ui/primitives'
 import { Note } from '@/components/shared'
+import { NEW_DEAL_ROUTE, goTo } from '@/lib/navigate'
 import { fmtCAD, fmtMultiple, fmtPct } from '@/engine/money'
 
 export default function DealsPage() {
@@ -104,8 +105,8 @@ export default function DealsPage() {
         actions={
           <div className="flex gap-2">
             <button className="btn btn-xs" onClick={clearFilters}>Clear</button>
-            <button className="btn btn-xs" onClick={() => addSample()}>Load example</button>
-            <button className="btn-primary btn-xs" onClick={() => addDeal()}>New deal</button>
+            <button className="btn btn-xs" onClick={() => { addSample(); goTo('dashboard') }}>Load example</button>
+            <button className="btn-primary btn-xs" onClick={() => { addDeal(); goTo(NEW_DEAL_ROUTE) }}>New deal</button>
           </div>
         }
       >
@@ -159,8 +160,8 @@ export default function DealsPage() {
           title="No deals yet"
           action={
             <div className="flex gap-2">
-              <button className="btn-primary" onClick={() => addDeal()}>New deal</button>
-              <button className="btn" onClick={() => addSample()}>Load the worked example</button>
+              <button className="btn-primary" onClick={() => { addDeal(); goTo(NEW_DEAL_ROUTE) }}>New deal</button>
+              <button className="btn" onClick={() => { addSample(); goTo('dashboard') }}>Load the worked example</button>
             </div>
           }
         >

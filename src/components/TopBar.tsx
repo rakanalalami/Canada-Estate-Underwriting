@@ -48,13 +48,22 @@ export function TopBar({ onToggleNav, route }: { onToggleNav: () => void; route:
       </a>
 
       {/* Live headline metrics travel with you across every page. */}
-      {r && deal && (
+      {r && deal && r.hasMeaningfulData && (
         <div className="ml-4 hidden items-center gap-5 border-l border-line pl-5 xl:flex">
           <Metric label="Price" value={fmtCAD(r.price)} />
           <Metric label="NOI" value={fmtCAD(stabilized!.noi.noi)} />
           <Metric label="Cap" value={fmtPct(cap)} tone={capB.tone} />
           <Metric label="Cash flow" value={`${fmtCAD(monthlyCf)}/mo`} tone={monthlyCf < 0 ? 'neg' : 'pos'} />
           <Metric label="DSCR" value={fmtMultiple(refiDscr)} tone={dscrB.tone} />
+        </div>
+      )}
+
+      {/* An empty deal has no headline figures worth showing. */}
+      {r && deal && !r.hasMeaningfulData && (
+        <div className="ml-4 hidden items-center border-l border-line pl-5 xl:flex">
+          <a href="#/property" className="text-xs text-muted transition-colors hover:text-accent">
+            No price or rent entered yet — open the property form
+          </a>
         </div>
       )}
 

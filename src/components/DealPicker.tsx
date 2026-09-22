@@ -1,6 +1,7 @@
 import { useActiveDeal, useStore } from '@/store/useStore'
 import { DEAL_STATUS_META } from '@/components/statusMeta'
 import { Badge, Select } from '@/components/ui/primitives'
+import { NEW_DEAL_ROUTE, goTo } from '@/lib/navigate'
 
 export function DealPicker() {
   const deals = useStore((s) => s.deals)
@@ -48,7 +49,13 @@ export function DealPicker() {
       )}
 
       <div className="flex gap-2">
-        <button className="btn btn-xs flex-1" onClick={() => addDeal()}>
+        <button
+          className="btn btn-xs flex-1"
+          onClick={() => {
+            addDeal()
+            goTo(NEW_DEAL_ROUTE)
+          }}
+        >
           New deal
         </button>
         <a className="btn btn-xs flex-1 text-center" href="#/deals">

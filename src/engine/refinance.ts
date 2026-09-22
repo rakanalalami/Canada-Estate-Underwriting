@@ -20,6 +20,13 @@ import { trace, type TraceStep } from './trace'
 
 export interface RefinanceInput {
   plan: RefinancePlan
+  /**
+   * The purchase price. Used as the fallback appraised value when no appraisal
+   * has been entered, so a deal that has never had its Refinance page opened
+   * cannot produce a mortgage against a value it was never given (§27: the
+   * appraisal is never assumed to exceed what was paid).
+   */
+  purchasePrice?: number
   /** Cash sunk into the asset: price + closing + renovation (no reserve). */
   capitalInProperty: number
   /** Stabilized annual NOI used for post-refinance coverage. */
@@ -66,7 +73,12 @@ export interface RefinanceResult {
  * Value used for the refinance. Comparable-sales and manual methods use the
  * appraisal inputs directly; income capitalisation is opt-in only.
  */
-export function refinanceValue(plan: RefinancePlan, stabilizedNoi: number, which: AppraisalCase): {
+export function refinanceValue(
+  plan: RefinancePlan,
+  stabilizedNoi: number,
+  which: AppraisalCase,
+  purchasePrice = 0,
+): {
   value: number
   note: string
 } {
@@ -85,12 +97,25 @@ export function refinanceValue(plan: RefinancePlan, stabilizedNoi: number, which
     return { value: plan.appraisalBase, note: 'Income capitalisation selected but no cap rate / NOI available — fell back to the entered appraisal.' }
   }
 
-  const value = which === 'LOW' ? plan.appraisalLow : which === 'HIGH' ? plan.appraisalHigh : plan.appraisalBase
+  const entered = which === 'LOW' ? plan.appraisalLow : which === 'HIGH' ? plan.appraisalHigh : plan.appraisalBase
+
+  if (entered <= 0) {
+    // No appraisal recorded. Fall back to the purchase price — never above it.
+    const fallback = which === 'LOW' ? purchasePrice * 0.95 : purchasePrice
+    return {
+      value: Math.max(0, fallback),
+      note:
+        purchasePrice > 0
+          ? 'No appraisal entered, so the purchase price is used. Record low, base and high appraisals on the Refinance page — the value a lender actually assigns is the single biggest unknown in this strategy.'
+          : 'No appraisal and no purchase price entered yet.',
+    }
+  }
+
   const note =
     plan.valuationMethod === 'COMPARABLE_SALES'
       ? 'Comparable residential sales. For 2–4 unit properties lenders weight comparable sales heavily; a higher NOI does not automatically raise the appraisal.'
       : 'Manually entered appraised value.'
-  return { value, note }
+  return { value: entered, note }
 }
 
 export function computeRefinance(input: RefinanceInput): RefinanceResult {
@@ -99,7 +124,7 @@ export function computeRefinance(input: RefinanceInput): RefinanceResult {
   const resolved =
     input.appraisedValueOverride !== undefined
       ? { value: input.appraisedValueOverride, note: 'Custom appraised value (stress scenario).' }
-      : refinanceValue(plan, stabilizedNoi, plan.appraisalCase)
+      : refinanceValue(plan, stabilizedNoi, plan.appraisalCase, input.purchasePrice ?? 0)
 
   const appraisedValue = Math.max(0, resolved.value)
   const targetLtv = input.ltvOverride ?? plan.ltv
@@ -250,7 +275,7 @@ export function computeAppraisalMatrix(
   const cases: AppraisalCase[] = ['LOW', 'BASE', 'HIGH']
   const out: AppraisalMatrixCell[] = []
   for (const c of cases) {
-    const { value } = refinanceValue(input.plan, input.stabilizedNoi, c)
+    const { value } = refinanceValue(input.plan, input.stabilizedNoi, c, input.purchasePrice ?? 0)
     for (const l of ltvs) {
       const r = computeRefinance({ ...input, appraisedValueOverride: value, ltvOverride: l })
       out.push({

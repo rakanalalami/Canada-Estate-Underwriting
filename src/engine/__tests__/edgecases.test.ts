@@ -202,3 +202,61 @@ describe('non-conforming override behaves as advertised', () => {
     expect(included.legal.messages.some((m) => m.includes('explicitly chosen'))).toBe(true)
   })
 })
+
+describe('an empty deal is reported as empty, not analysed', () => {
+  it('flags a deal with no price or rent and lists what is missing', () => {
+    const deal = createDeal({ units: [] })
+    const r = underwrite(deal, { profile })
+
+    expect(r.hasMeaningfulData).toBe(false)
+    expect(r.missingInputs.map((m) => m.key)).toContain('PRICE')
+    expect(r.missingInputs.map((m) => m.key)).toContain('UNITS')
+    expect(r.warnings[0]).toMatch(/no price or no rent entered/)
+  })
+
+  it('fires no red flags against a deal with nothing in it', () => {
+    const r = underwrite(createDeal(), { profile })
+    expect(r.dealBreakers.hits).toEqual([])
+    expect(r.dealBreakers.redCount).toBe(0)
+    expect(r.dealBreakers.amberCount).toBe(0)
+  })
+
+  it('does not invent a mortgage against a price that was never entered', () => {
+    // The old default seeded a C$650,000 appraisal regardless of price, which
+    // produced a real mortgage and "capital released" on an empty deal.
+    const r = underwrite(createDeal(), { profile })
+    expect(r.refinance.appraisedValue).toBe(0)
+    expect(r.refinance.mortgageAmount).toBe(0)
+    expect(r.refinance.netCashReleased).toBe(0)
+    expect(r.refinance.annualDebtService).toBe(0)
+  })
+
+  it('treats an unset appraisal as the purchase price, never above it', () => {
+    const deal = createDeal({
+      units: [buildUnit(0, { currentRent: 2000, marketRent: 2000 })],
+      info: { ...createDeal().info, askingPrice: 500_000, offerPrice: 500_000 },
+    })
+    const cleared = { ...deal, refinance: { ...deal.refinance, appraisalLow: 0, appraisalBase: 0, appraisalHigh: 0 } }
+    const r = underwrite(cleared, { profile })
+
+    expect(r.hasMeaningfulData).toBe(true)
+    expect(r.refinance.appraisedValue).toBe(500_000)
+    expect(r.refinance.appraisedValue).toBeLessThanOrEqual(r.price)
+    expect(r.refinance.valuationNote).toMatch(/No appraisal entered/)
+
+    // The high case must not exceed what was paid.
+    const high = r.appraisalMatrix.filter((c) => c.appraisalCase === 'HIGH')
+    expect(high.every((c) => c.appraisedValue <= 500_000)).toBe(true)
+  })
+
+  it('reports meaningful data once a price and a rent exist', () => {
+    const deal = createDeal({
+      units: [buildUnit(0, { currentRent: 2000, marketRent: 2000 })],
+      info: { ...createDeal().info, askingPrice: 400_000, offerPrice: 400_000 },
+    })
+    const r = underwrite(deal, { profile })
+    expect(r.hasMeaningfulData).toBe(true)
+    expect(r.missingInputs.map((m) => m.key)).not.toContain('PRICE')
+    expect(r.scenarios.STABILIZED.capRateOnOffer).not.toBeNull()
+  })
+})

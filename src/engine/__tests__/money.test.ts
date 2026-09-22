@@ -57,3 +57,12 @@ describe('statistics helpers', () => {
     expect(mean([])).toBeNull()
   })
 })
+
+describe('negative currency formatting', () => {
+  it('puts the sign ahead of the whole symbol, not inside it', () => {
+    expect(fmtCAD(-8140)).toBe('-C$8,140')
+    expect(fmtCAD(-8140.5, 2)).toBe('-C$8,140.50')
+    expect(fmtCAD(0)).toBe('C$0')
+    expect(fmtCADCompact(-1_200_000)).toBe('-C$1.20M')
+  })
+})

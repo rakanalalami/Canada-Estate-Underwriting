@@ -95,10 +95,25 @@ export interface UnderwriteOptions {
   rentFactorOverride?: number
 }
 
+export interface MissingInput {
+  key: string
+  label: string
+  detail: string
+  route: string
+}
+
 export interface UnderwriteResult {
   deal: Deal
   price: number
   askingPrice: number
+  /**
+   * True once enough has been entered for the outputs to mean anything. A deal
+   * with no price and no rent still produces arithmetic, but reporting a cap
+   * rate or firing a red flag against it would be noise dressed as analysis.
+   */
+  hasMeaningfulData: boolean
+  /** What is still missing, in the order it is worth entering. */
+  missingInputs: MissingInput[]
   rentRoll: RentRollSummary
   rentComps: RentCompSummary
   saleComps: SaleCompSummary
@@ -289,6 +304,7 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
 
   const refiInput = {
     plan: deal.refinance,
+    purchasePrice: price,
     capitalInProperty: acquisition.capitalInProperty,
     stabilizedNoi,
   }
@@ -377,6 +393,7 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
     if (deal.financing.structure === 'CASH_THEN_REFINANCE') {
       const r = computeRefinance({
         plan: scaleAppraisals(deal.refinance, price, p),
+        purchasePrice: p,
         capitalInProperty: a.capitalInProperty,
         stabilizedNoi: s.noi.noi,
       })
@@ -438,6 +455,7 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
     if (deal.financing.structure === 'CASH_THEN_REFINANCE') {
       const r = computeRefinance({
         plan: scaleAppraisals(deal.refinance, price, o.price),
+        purchasePrice: o.price,
         capitalInProperty: a.capitalInProperty,
         stabilizedNoi: s.noi.noi,
         rateOverride: o.rate,
@@ -547,30 +565,78 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
     allUnitsLegal: legal.nonConformingUnits === 0 && legal.excessUnits === 0,
   })
 
-  const dealBreakers = evaluateDealBreakers({
-    deal,
-    capRate: scenarios.CONSERVATIVE.capRateOnOffer,
-    stabilizedCapRate: scenarios.STABILIZED.capRateOnOffer,
-    dscr:
-      deal.financing.structure === 'CASH_THEN_REFINANCE'
-        ? refinance.dscr
-        : scenarios.STABILIZED.cashFlow.dscr,
-    monthlyCashFlow:
-      deal.financing.structure === 'CASH_THEN_REFINANCE'
-        ? refinance.monthlyCashFlow
-        : scenarios.STABILIZED.cashFlow.monthlyCashFlow,
-    effectiveGrossIncome: scenarios.STABILIZED.noi.effectiveGrossIncome,
-    propertyTaxAnnual,
-    insuranceAnnual,
-    landlordPaidUtilitiesAnnual: landlordUtilitiesAnnual,
-    renovationBudget: deal.purchaseCosts.immediateRenovationBudget,
-    purchasePrice: price,
-    capex,
-    legal,
-    belowMarketGapPercent,
-    rentsVerified,
-    components: deal.components,
-  })
+  const hasPrice = price > 0
+  const hasRent = scenarios.STABILIZED.noi.totalPotentialGrossIncome > 0
+  const hasUnits = deal.units.length > 0
+  const hasMeaningfulData = hasPrice && hasRent
+
+  const missingInputs: MissingInput[] = []
+  if (!hasPrice) {
+    missingInputs.push({
+      key: 'PRICE',
+      label: 'Asking price',
+      detail: 'Every yield, cash requirement and offer figure is measured against a price.',
+      route: 'property',
+    })
+  }
+  if (!hasUnits) {
+    missingInputs.push({
+      key: 'UNITS',
+      label: 'At least one unit',
+      detail: 'Income is built unit by unit, never from a single building total.',
+      route: 'rent-roll',
+    })
+  } else if (!hasRent) {
+    missingInputs.push({
+      key: 'RENT',
+      label: 'Rent for each unit',
+      detail: 'Enter the rent being collected today and the market rent you can support with comparables.',
+      route: 'rent-roll',
+    })
+  }
+  if (deal.expenses.lines.every((l) => l.actualAmount === null)) {
+    missingInputs.push({
+      key: 'EXPENSES',
+      label: 'Verified operating expenses',
+      detail: 'Property tax and insurance are running on model assumptions until you enter the real figures.',
+      route: 'expenses',
+    })
+  }
+  if (deal.rentComps.length === 0) {
+    missingInputs.push({
+      key: 'COMPS',
+      label: 'Rent comparables',
+      detail: 'Without them the market rents are unsupported estimates and the stabilized case rests on them.',
+      route: 'comparables',
+    })
+  }
+
+  const dealBreakers = hasMeaningfulData
+    ? evaluateDealBreakers({
+        deal,
+        capRate: scenarios.CONSERVATIVE.capRateOnOffer,
+        stabilizedCapRate: scenarios.STABILIZED.capRateOnOffer,
+        dscr:
+          deal.financing.structure === 'CASH_THEN_REFINANCE'
+            ? refinance.dscr
+            : scenarios.STABILIZED.cashFlow.dscr,
+        monthlyCashFlow:
+          deal.financing.structure === 'CASH_THEN_REFINANCE'
+            ? refinance.monthlyCashFlow
+            : scenarios.STABILIZED.cashFlow.monthlyCashFlow,
+        effectiveGrossIncome: scenarios.STABILIZED.noi.effectiveGrossIncome,
+        propertyTaxAnnual,
+        insuranceAnnual,
+        landlordPaidUtilitiesAnnual: landlordUtilitiesAnnual,
+        renovationBudget: deal.purchaseCosts.immediateRenovationBudget,
+        purchasePrice: price,
+        capex,
+        legal,
+        belowMarketGapPercent,
+        rentsVerified,
+        components: deal.components,
+      })
+    : { hits: [], redCount: 0, amberCount: 0 }
 
   const subjectVsComps = compareSubjectToComps(
     {
@@ -586,6 +652,11 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
   /* --------------------------- Warnings ---------------------------- */
 
   const warnings: string[] = []
+  if (!hasMeaningfulData) {
+    warnings.push(
+      'This deal has no price or no rent entered yet, so every figure below is a placeholder. Nothing here is an analysis until the property and rent roll are filled in.',
+    )
+  }
   warnings.push(...legal.messages)
   if (rentRoll.belowMarketUnits.length > 0) {
     warnings.push(
@@ -616,6 +687,8 @@ export function underwrite(deal: Deal, opts: UnderwriteOptions): UnderwriteResul
     deal,
     price,
     askingPrice,
+    hasMeaningfulData,
+    missingInputs,
     rentRoll,
     rentComps,
     saleComps,

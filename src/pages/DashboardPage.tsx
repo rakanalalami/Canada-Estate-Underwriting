@@ -23,6 +23,7 @@ import {
 } from '@/engine/metrics'
 import { useStore } from '@/store/useStore'
 import { ProjectionChart } from '@/components/charts/lazy'
+import { goTo } from '@/lib/navigate'
 
 export default function DashboardPage({ deal, r }: { deal: Deal; r: UnderwriteResult }) {
   const profile = useStore((s) => s.profile)
@@ -44,6 +45,12 @@ export default function DashboardPage({ deal, r }: { deal: Deal; r: UnderwriteRe
   const breakEven = stabilized.breakEven.breakEvenOccupancy
 
   const capB = capRateBand(stabilized.capRateOnOffer)
+
+  // A deal with no price or no rent produces arithmetic but not analysis.
+  // Showing the KPI wall for it would dress placeholders up as findings.
+  if (!r.hasMeaningfulData) {
+    return <GettingStarted deal={deal} r={r} />
+  }
 
   return (
     <div className="space-y-5">
@@ -394,6 +401,109 @@ export default function DashboardPage({ deal, r }: { deal: Deal; r: UnderwriteRe
           )}
         </Panel>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Shown instead of the dashboard until the deal has a price and a rent roll.
+ * The dashboard is read-only, so a new deal needs to be pointed at the pages
+ * where data is actually entered.
+ */
+function GettingStarted({ deal, r }: { deal: Deal; r: UnderwriteResult }) {
+  const steps = [
+    {
+      route: 'property',
+      label: 'Property and price',
+      detail: 'Address, property type, year built, and the asking price you are underwriting against.',
+      done: r.price > 0,
+    },
+    {
+      route: 'rent-roll',
+      label: 'Rent roll',
+      detail: 'One row per unit: current rent, market rent, and whether the unit is legal.',
+      done: r.rentRoll.currentMonthlyGSI > 0 || r.rentRoll.marketMonthlyResidentialRent > 0,
+    },
+    {
+      route: 'expenses',
+      label: 'Operating expenses',
+      detail: 'Ottawa defaults are pre-filled. Replace property tax and insurance with the real figures.',
+      done: deal.expenses.lines.some((l) => l.actualAmount !== null),
+    },
+    {
+      route: 'comparables',
+      label: 'Comparables',
+      detail: 'Two or three rent comps change the quality of this analysis more than any other input.',
+      done: deal.rentComps.length > 0,
+    },
+  ]
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-5">
+      <Panel
+        title={`"${deal.name}" has nothing to analyse yet`}
+        subtitle="The dashboard reports results — it has no input fields. Start with the property form."
+      >
+        <ol className="space-y-2">
+          {steps.map((step, i) => (
+            <li key={step.route}>
+              <button
+                onClick={() => goTo(step.route)}
+                className={cx(
+                  'flex w-full items-start gap-3 rounded-md border px-3.5 py-3 text-left transition-colors hover:bg-raised',
+                  step.done ? 'border-pos/35 bg-pos/5' : 'border-line',
+                )}
+              >
+                <span
+                  className={cx(
+                    'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-2xs font-semibold',
+                    step.done ? 'bg-pos text-white' : 'bg-line text-muted',
+                  )}
+                >
+                  {step.done ? '✓' : i + 1}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">{step.label}</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted">{step.detail}</span>
+                </span>
+              </button>
+            </li>
+          ))}
+        </ol>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button className="btn-primary" onClick={() => goTo('property')}>
+            Enter property details
+          </button>
+          <button className="btn" onClick={() => goTo('first-deal')}>
+            Work out what to look for first
+          </button>
+        </div>
+      </Panel>
+
+      {r.missingInputs.length > 0 && (
+        <Panel title="Still needed" subtitle="In the order it is worth entering.">
+          <ul className="space-y-2">
+            {r.missingInputs.map((m) => (
+              <li key={m.key} className="flex items-start justify-between gap-4 border-b border-line/50 pb-2 last:border-0 last:pb-0">
+                <span className="min-w-0">
+                  <span className="block text-xs font-medium">{m.label}</span>
+                  <span className="mt-0.5 block text-2xs leading-relaxed text-muted">{m.detail}</span>
+                </span>
+                <button className="btn btn-xs shrink-0" onClick={() => goTo(m.route)}>
+                  Open
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
+
+      <Callout tone="info" title="Nothing is being hidden from you">
+        Every other view still works and will happily show figures built from these blanks — they
+        simply do not mean anything yet. No cap rate, DSCR or red flag is reported against a deal
+        with no price and no rent, because a number computed from nothing is not a finding.
+      </Callout>
     </div>
   )
 }

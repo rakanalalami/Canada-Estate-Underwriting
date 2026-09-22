@@ -1,5 +1,6 @@
 import { useStore } from '@/store/useStore'
 import { Callout, Panel } from '@/components/ui/primitives'
+import { NEW_DEAL_ROUTE, goTo } from '@/lib/navigate'
 
 export function WelcomeScreen() {
   const addDeal = useStore((s) => s.addDeal)
@@ -18,15 +19,27 @@ export function WelcomeScreen() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <button className="btn-primary justify-start px-4 py-3 text-left" onClick={() => addDeal()}>
+        <button
+          className="btn-primary justify-start px-4 py-3 text-left"
+          onClick={() => {
+            addDeal()
+            goTo(NEW_DEAL_ROUTE)
+          }}
+        >
           <div>
             <div className="text-sm font-semibold">Start a new deal</div>
             <div className="mt-0.5 text-2xs font-normal opacity-80">
-              Blank underwriting with Ottawa defaults
+              Opens the property form — address, price and units first
             </div>
           </div>
         </button>
-        <button className="btn justify-start px-4 py-3 text-left" onClick={() => addSample()}>
+        <button
+          className="btn justify-start px-4 py-3 text-left"
+          onClick={() => {
+            addSample()
+            goTo('dashboard')
+          }}
+        >
           <div>
             <div className="text-sm font-semibold">Load the worked example</div>
             <div className="mt-0.5 text-2xs font-normal text-muted">

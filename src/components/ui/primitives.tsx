@@ -3,7 +3,7 @@
  * so every control is compact, aligned and uses tabular figures.
  */
 
-import React, { useEffect, useId, useRef, useState } from 'react'
+import React, { useEffect, useId, useLayoutEffect, useRef, useState } from 'react'
 import type { Tone } from '@/engine/metrics'
 import { fmtCAD, fmtMultiple, fmtNumber, fmtPct, parseNumeric } from '@/engine/money'
 import type { TraceStep } from '@/engine/trace'
@@ -373,6 +373,24 @@ export function NumberInput({
 }) {
   const [draft, setDraft] = useState<string | null>(null)
   const id = useId()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const selectOnCommit = useRef(false)
+
+  /**
+   * Select the existing value when the field is focused, so typing replaces it.
+   *
+   * This runs in a layout effect rather than a requestAnimationFrame: the frame
+   * callback lands roughly 16ms later, which is after the first keystrokes of a
+   * paste or very fast entry have already been inserted. The select() then wipes
+   * them, silently dropping characters. A layout effect runs as soon as the
+   * focus handler's state update commits, before any further key event is
+   * dispatched.
+   */
+  useLayoutEffect(() => {
+    if (!selectOnCommit.current) return
+    selectOnCommit.current = false
+    inputRef.current?.select()
+  })
 
   const display =
     draft !== null
@@ -402,15 +420,16 @@ export function NumberInput({
         )}
         <input
           id={id}
+          ref={inputRef}
           inputMode="decimal"
           disabled={disabled}
           className={cx('field-num', prefix && 'pl-8', suffix && 'pr-8')}
           value={display}
           placeholder={placeholder}
           onChange={(e) => setDraft(e.target.value)}
-          onFocus={(e) => {
+          onFocus={() => {
+            selectOnCommit.current = true
             setDraft(value === null ? '' : String(value))
-            requestAnimationFrame(() => e.target.select())
           }}
           onBlur={(e) => commit(e.target.value)}
           onKeyDown={(e) => {

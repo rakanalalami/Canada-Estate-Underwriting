@@ -21,12 +21,17 @@ const NUM = new Intl.NumberFormat('en-CA', {
   maximumFractionDigits: 0,
 })
 
-/** C$650,000 — the whole app uses CAD, so the C prefix is always shown. */
+/**
+ * C$650,000 — the whole app uses CAD, so the C prefix is always shown.
+ *
+ * The sign is placed ahead of the whole symbol: Intl renders a negative as
+ * "-$8,140", and naively prefixing "C" would produce the nonsense "C-$8,140".
+ */
 export function fmtCAD(value: number | null | undefined, decimals = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—'
   const f = decimals > 0 ? CAD_CENTS : CAD
-  // Intl renders CAD as "$" in en-CA; prefix with C to be unambiguous.
-  return 'C' + f.format(value)
+  const sign = value < 0 ? '-' : ''
+  return `${sign}C${f.format(Math.abs(value))}`
 }
 
 /** Compact form for chart axes and dense tables: C$650k / C$1.2M. */

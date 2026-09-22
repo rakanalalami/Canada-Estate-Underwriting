@@ -257,12 +257,17 @@ export function defaultFinancing(): FinancingPlan {
   }
 }
 
+/**
+ * Appraisals default to zero rather than to a guessed figure. The engine then
+ * falls back to the purchase price, so a deal whose Refinance page has never
+ * been opened cannot show a mortgage drawn against a value nobody supplied.
+ */
 export function defaultRefinance(price: number): RefinancePlan {
   return {
     monthsUntilRefinance: 6,
-    appraisalLow: price * 0.95,
-    appraisalBase: price,
-    appraisalHigh: price * 1.06,
+    appraisalLow: price > 0 ? price * 0.95 : 0,
+    appraisalBase: price > 0 ? price : 0,
+    appraisalHigh: price > 0 ? price : 0,
     appraisalCase: 'BASE',
     valuationMethod: 'COMPARABLE_SALES',
     valuationCapRate: 0.065,
@@ -368,7 +373,7 @@ export function createDeal(overrides: Partial<Deal> = {}): Deal {
     expenses: buildDefaultExpenseSet(units.length),
     purchaseCosts: defaultPurchaseCosts(),
     financing: defaultFinancing(),
-    refinance: defaultRefinance(info.askingPrice || 650_000),
+    refinance: defaultRefinance(info.offerPrice || info.askingPrice),
     projection: defaultProjection(),
     legal: defaultLegal(),
     ratings: defaultRatings(),
